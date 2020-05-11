@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>NPNT</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    //mapbox
+    <script src="https://api.mapbox.com/mapbox-gl-js/v1.9.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v1.9.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+    </style>
+
+
+    //firebase scripts
+    <script defer src="https://www.gstatic.com/firebasejs/7.13.2/firebase-app.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/7.13.2/firebase-auth.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/7.13.2/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/live/3.0/firebase.js"></script>
+
+</head>
+
+<body>
+    <style type="text/css">
+        #info {
+            display: block;
+            position: relative;
+            margin: 0px auto;
+            width: 50%;
+            padding: 10px;
+            border: none;
+            border-radius: 3px;
+            font-size: 12px;
+            text-align: center;
+            color: #222;
+            background: #fff;
+        }
+    </style>
+    <style>
+        .calculation-box {
+            height: 75px;
+            width: 150px;
+            position: absolute;
+            bottom: 40px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            text-align: center;
+        }
+
+        p {
+            font-family: 'Open Sans';
+            margin: 0;
+            font-size: 13px;
+        }
+    </style>
+    <script src="https://api.tiles.mapbox.com/mapbox.js/plugins/turf/v3.0.11/turf.min.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.0.9/mapbox-gl-draw.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.0.9/mapbox-gl-draw.css"
+        type="text/css" />
+
+    <div id="map"></div>
+    <pre id="info"></pre>
+    <script
+        src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.4.2/mapbox-gl-geocoder.min.js"></script>
+    <link rel="stylesheet"
+        href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.4.2/mapbox-gl-geocoder.css"
+        type="text/css" />
+    <div class="calculation-box">
+        <p>Draw a polygon using the draw tools.</p>
+        <div id="calculated-area"></div>
+    </div>
+    <!-- Promise polyfill script required to use Mapbox GL Geocoder in IE 11 -->
+    <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script>
+    <script>
+        var lat;
+        var lng;
+        var alti;
+        //setup mapbox
+
+        mapboxgl.accessToken = 'pk.eyJ1IjoibnBudCIsImEiOiJjazhibG93c2kwZGVrM3JvYW4wd3o2MzllIn0.oOzu6V4M8euRVeRkgCci9A';
+        var map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/satellite-v9'
+        });
+        
+        map.fitBounds([
+            [-168.30520240075913,64.8358548708973],
+            [152.77377797786426,-29.77236723145483]
+        ]);
+        //geofence
+        var draw = new MapboxDraw({
+            displayControlsDefault: false,
+            controls: {
+                polygon: true,
+                trash: true
+            }
+        });
+        map.addControl(draw);
+
+        map.on('draw.create', updateArea);
+        map.on('draw.delete', updateArea);
+        map.on('draw.update', updateArea);
+
+        function updateArea(e) {
+            var data = draw.getAll();
+            var answer = document.getElementById('calculated-area');
+            if (data.features.length > 0) {
+                var area = turf.area(data);
+                // restrict to area to 2 decimal points
+                var rounded_area = Math.round(area * 100) / 100;
+                answer.innerHTML =
+                    '<p><strong>' +
+                    rounded_area +
+                    '</strong></p><p>square meters</p>';
+            } else {
+                answer.innerHTML = '';
+                if (e.type !== 'draw.delete')
+                    alert('Use the draw tools to draw a polygon!');
+            }
+        }
+
+        //firebase
+        //  Web app's Firebase configuration
+        var Config = {
+            apiKey: "AIzaSyBNcURCd6BDbek7H5WMdCRimbAO5IuFOls",
+            authDomain: "npnt-acf2d.firebaseapp.com",
+            databaseURL: "https://npnt-acf2d.firebaseio.com",
+            projectId: "npnt-acf2d",
+            storageBucket: "npnt-acf2d.appspot.com",
+            messagingSenderId: "909672195598",
+            appId: "1:909672195598:web:19c6ecee582c7d2a927e5f",
+            measurementId: "G-XH7EFWC400"
+        };
+        // Initialize Firebase
+        firebase.initializeApp(Config);
+        
+        var database = firebase.database();
+        var childData;
+        var childKey;
+
+        function getData() {
+            return new Promise((resolve, reject) => {
+                database.ref().on('child_added', function (snapshot) {
+                    snapshot.forEach(function (childSnapshot) {
+                        childKey = childSnapshot.key;
+                        childData = childSnapshot.val();
+                        lat = childData.latitude;
+                        lng = childData.longitude;
+                        resolve(childData);
+                            })
+                })
+            })
+        }
+        
+        showPoints();
+                
+        
+        // mouse movement
+
+        map.on('mousemove', function (e) {
+            document.getElementById('info').innerHTML =
+                // e.point is the x, y coordinates of the mousemove event relative
+                // to the top-left corner of the map
+                JSON.stringify(e.point) +
+                '<br />' +
+                // e.lngLat is the longitude, latitude geographical position of the event
+                JSON.stringify(e.lngLat.wrap());
+        });
+        //showing points
+        function showPoints() {
+            map.on('load', function () {
+                getData().then((res) => {
+                    const lat = parseFloat(res.latitude);
+                    const lng = parseFloat(res.longitude);
+                    map.addSource('points', {
+                        'type': 'geojson',
+                        'data': {
+                            'type': 'FeatureCollection',
+                            'features': [
+                                {
+                                    // feature for Mapbox DC
+                                    'type': 'Feature',
+                                    'geometry': {
+                                        'type': 'Point',
+                                        'coordinates': [lng,lat]
+                                    },
+                                    'properties': {
+                                        'title': 'Drone1',
+                                        'icon': 'rocket'
+                                    }
+                                }
+                            ]
+                        }
+                    });
+                    map.addLayer({
+                        'id': 'points',
+                        'type': 'symbol',
+                        'source': 'points',
+                        'layout': {
+                            // get the icon name from the source's "icon" property
+                            // concatenate the name to get an icon from the style's sprite sheet
+                            'icon-image': ['concat', ['get', 'icon'], '-15'],
+                            // get the title name from the source's "title" property
+                            'text-field': ['get', 'title'],
+                            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+                            'text-offset': [0, 0.6],
+                            'text-anchor': 'top'
+                        }
+                    });
+                })
+            });
+        }
+        map.addControl(new mapboxgl.NavigationControl());
+    </script>
+</body>
+
+</html>
